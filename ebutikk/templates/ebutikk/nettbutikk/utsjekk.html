@@ -1,0 +1,208 @@
+{% extends 'ebutikk/nettbutikk/hoved.html' %}
+{% load static %}
+{% block content %}
+
+<!--- HTML -->
+<div class="row">
+    <div class="col-lg-6">
+        <div class="box-element" id="form-wrapper">
+            <form id="form">
+                <div id="kunde-informasjon">
+                    <div class="form-field">
+                        <input required class="form-control" type="text" name="navn" placeholder="Navn">
+                    </div>
+                    <div class="form-field">
+                        <input required class="form-control" type="text" name="etternavn" placeholder="Etternavn">
+                    </div>
+                    <div class="form-field">
+                        <input required class="form-control" type="email" name="email" placeholder="Email">
+                    </div>
+                </div>
+
+                <div id="frakt-informasjon">
+                    <hr>
+                    <p>Leverings Adresse:</p>
+                    <hr>
+                    <div class="form-field">
+                        <input class="form-control" type="text" name="adresse" placeholder="Addresse..">
+                    </div>
+                    <div class="form-field">
+                        <input class="form-control" type="text" name="by" placeholder="By">
+                    </div>
+                    <div class="form-field">
+                        <input class="form-control" type="text" name="fylke" placeholder="Fylke">
+                    </div>
+                    <div class="form-field">
+                        <input class="form-control" type="text" name="postnr" placeholder="Post Nummer">
+                    </div>
+                </div>
+
+                <hr>
+                <input id="form-button" class="btn btn-success btn-block" type="submit" value="Fortsett">
+            </form>
+        </div>
+
+        <br>
+        <div class="box-element hidden" id="betalings-informajson">
+            <small>Paypal Options</small>
+            <hr>
+            <div id="paypal-button-container"></div>
+            <!-- <button id="godkjenn-betaling" type="button" class="btn btn-success">Godkjenn betaling</button> -->
+        </div>
+
+    </div>
+
+    <div class="col-lg-6">
+        <div class="box-element">
+            <a class="btn btn-outline-dark" href="{% url 'handlevogn' %}">&#x2190; Handlevogn</a>
+            <hr>
+            <h3>Order Oppsumering</h3>
+            <hr>
+            {% for element in elementer %}
+            <div class="cart-row">
+                <div style="flex:2"><img class="row-image" src="{{ element.produkt.bilde.url }}"></div>
+                <div style="flex:2">
+                    <p>{{ element.produkt.navn }}</p>
+                </div>
+                <div style="flex:1">
+                    <p>{{ element.total_pris}} kr</p>
+                </div>
+                <div style="flex:1">
+                    <p>{{ element.antall }}</p>
+                </div>
+            </div>
+            {% endfor %}
+            <h5>Items: <strong>{{ order.total_pris }}</strong></h5>
+            <h5>Total: <strong>{{ order.total_antall }}</strong></h5>
+        </div>
+    </div>
+</div>
+<!--- PayPal Javascript -->
+<script src="https://www.paypal.com/sdk/js?client-id=AX-0IIJZPxnL4HZCyZcKdEsuzfUXQ9_VWvFIwVBa9U3Pw_oapVENdJWVS492zwKQdJDPGy9_BTT4VtBp&currency=NOK"></script>
+
+<script>
+    // Henter Order beløop
+    var total = '{{ order.total_pris }}'
+
+    // Render the PayPal button into #paypal-button-container
+    paypal.Buttons({
+
+        // Style
+        style: {
+            color: 'blue',
+            shape: 'pill',
+            label: 'pay',
+            height: 40
+        },
+
+        // Set up the transaction
+        createOrder: function (data, actions) {
+            return actions.order.create({
+                purchase_units: [{
+                    amount: {
+                        value: parseFloat(total).toFixed(2)
+                    }
+                }]
+            });
+        },
+
+        // Finalize the transaction
+        onApprove: function (data, actions) {
+            return actions.order.capture().then(function (details) {
+                // Proccess order
+                godkjenOrder();
+            });
+        }
+
+
+    }).render('#paypal-button-container');
+</script>
+
+<!--- Javascript -->
+<script type="text/javascript">
+    var frakt = '{{order.frakt}}';
+    var bruker = '{{request.user}}';
+    var form = document.getElementById('form');
+    var betalingKnp = document.getElementById('godkjenn-betaling');
+    var belop = '{{ order.total_pris }}';
+
+
+    if (bruker != 'AnonymousUser') {
+        document.getElementById('kunde-informasjon').innerHTML = '';
+    }
+
+    if (frakt == 'False') {
+        document.getElementById('frakt-informasjon').innerHTML = '';
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        form.classList.add('hidden');
+        document.getElementById('betalings-informajson').classList.remove('hidden');
+    })
+
+    /* betalingKnp.addEventListener('click', function () {
+        godkjenOrder();
+    }) */
+
+    function godkjenOrder() {
+        var kunde = {};
+        var fraktInfo = {};
+
+        //Sending av kunde
+        if (bruker == 'AnonymousUser') {
+            kunde = {
+                'Navn': form.navn.value,
+                'Etternavn': form.etternavn.value,
+                'Email': form.email.value,
+                'Belop': belop
+            }
+        } else {
+            kunde = {
+                'Kunde': bruker,
+                'Belop': belop
+            }
+        }
+
+        //Sending av frakt infromasjon
+        if (frakt == 'True') {
+            fraktInfo = {
+                'Adresse': form.adresse.value,
+                'By': form.by.value,
+                'Fylke': form.fylke.value,
+                'Postnr': form.postnr.value
+            }
+        } else {
+            fraktInfo = {
+                'Frakt': false,
+            }
+        }
+
+
+        //Sending av data til backend
+        url = "/behandling/";
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken,
+            },
+            body: JSON.stringify({
+                'Kunde': kunde,
+                'Frakt-Informasjon': fraktInfo
+            })
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                console.log('Order Informasjon', data);
+                alert('Handel godkjent');
+
+                handlevogn = {};
+                document.cookie = "handlevogn=" + JSON.stringify(handlevogn) + ";domain=;path=/";
+
+                window.location.href = "{% url 'butikk' %}"
+            })
+    }
+</script>
+{% endblock content %}
